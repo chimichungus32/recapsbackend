@@ -475,7 +475,7 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
 
     print(f"\nStarting transcription of: {audio_path}")
     # Make sure your Groq API key is configured. If you don't have one, you can get one at https://console.groq.com/keys!
-    # client = Groq(api_key=api_key, max_retries=0)
+    client = Groq(api_key=api_key, max_retries=0)
 
     processed_path = None
     try:
@@ -495,42 +495,42 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
         total_chunks = (duration // (chunk_ms - overlap_ms)) + 1
         print(f"Processing {total_chunks} chunks...")
 
-        # results = []
-        # total_transcription_time = 0
+        results = []
+        total_transcription_time = 0
 
         # Loop through each chunk, extract current chunk from audio, transcribe    
-        # for i in range(total_chunks):
-        #     start = i * (chunk_ms - overlap_ms)
-        #     end = min(start + chunk_ms, duration)
-
-        #     print(f"\nProcessing chunk {i+1}/{total_chunks}")
-        #     print(f"Time range: {start/1000:.1f}s - {end/1000:.1f}s")
-
-        #     chunk = audio[start:end]
-        #     result, chunk_time = transcribe_single_chunk(client, chunk, i+1, total_chunks)
-        #     total_transcription_time += chunk_time
-        #     results.append((result, start))
-        results = [None] * total_chunks
-        chunks = []
         for i in range(total_chunks):
             start = i * (chunk_ms - overlap_ms)
             end = min(start + chunk_ms, duration)
 
+            print(f"\nProcessing chunk {i+1}/{total_chunks}")
+            print(f"Time range: {start/1000:.1f}s - {end/1000:.1f}s")
+
             chunk = audio[start:end]
-            chunks.append((chunk, start))
+            result, chunk_time = transcribe_single_chunk(client, chunk, i+1, total_chunks)
+            total_transcription_time += chunk_time
+            results.append((result, start))
+        # results = [None] * total_chunks
+        # chunks = []
+        # for i in range(total_chunks):
+        #     start = i * (chunk_ms - overlap_ms)
+        #     end = min(start + chunk_ms, duration)
+
+        #     chunk = audio[start:end]
+        #     chunks.append((chunk, start))
           
-        with ProcessPoolExecutor(max_workers=4) as executor:
-            futures = {
-                executor.submit(worker_transcribe, api_key, chunk, chunk_index + 1, total_chunks): chunk_index for chunk_index, (chunk, start) in enumerate(chunks)
-            }
-            for future in as_completed(futures):
-                chunk_index = futures[future]
-                result, chunk_time = future.result()
+        # with ProcessPoolExecutor(max_workers=4) as executor:
+        #     futures = {
+        #         executor.submit(worker_transcribe, api_key, chunk, chunk_index + 1, total_chunks): chunk_index for chunk_index, (chunk, start) in enumerate(chunks)
+        #     }
+        #     for future in as_completed(futures):
+        #         chunk_index = futures[future]
+        #         result, chunk_time = future.result()
 
-                start = chunks[chunk_index][1] 
+        #         start = chunks[chunk_index][1] 
 
-                results[chunk_index] = (result, start)
-                print("Finished a process")
+        #         results[chunk_index] = (result, start)
+        #         print("Finished a process")
 
         final_result = merge_transcripts(results)
         save_results(final_result, audio_path)
