@@ -514,5 +514,11 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
         if processed_path:
             Path(processed_path).unlink(missing_ok=True)
 
-if __name__ == "__main__":
+def transcribe():
+    start_time = time.time()
     transcribe_audio_in_chunks(Path("Dynamic Verification.wav"))
+    end_time = time.time()
+    print(f"Total time to transcribe: {end_time - start_time}s")
+
+if __name__ == "__main__":
+    transcribe()
