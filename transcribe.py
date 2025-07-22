@@ -12,9 +12,14 @@ import tempfile # For safe temporary file handling
 import re # For regex checking during audio chunk merging
 from typing import List, Tuple
 from dotenv import load_dotenv
-from concurrent.futures import ProcessPoolExecutor, as_completed
+
+# from concurrent.futures import ProcessPoolExecutor, as_completed
+from aiolimiter import AsyncLimiter
+import asyncio
+from groq import AsyncGroq
 
 load_dotenv()  
+rate_limit = AsyncLimiter(max_rate=20, time_period=60)  # 20 concurrent requests every 60s
 
 def preprocess_audio(input_path: Path) -> Path:
     """
@@ -400,7 +405,60 @@ def save_results(result: dict, audio_path: Path) -> Path:
         print(f"Error saving results: {str(e)}")
         raise
 
-def transcribe_single_chunk(client: Groq, chunk: AudioSegment, chunk_num: int, total_chunks: int) -> Tuple[dict, float]:
+# def transcribe_single_chunk(client: Groq, chunk: AudioSegment, chunk_num: int, total_chunks: int) -> Tuple[dict, float]:
+#     """
+#     Transcribe a single audio chunk with Groq API.
+
+#     Args:
+#         client: Groq client instance
+#         chunk: Audio segment to transcribe
+#         chunk_num: Current chunk number
+#         total_chunks: Total number of chunks
+
+#     Returns:
+#         Tuple of (transcription result, processing time)
+
+#     Raises:
+#         Exception: If chunk transcription fails after retries
+#     """
+#     total_api_time = 0
+
+#     while True:
+#         with tempfile.NamedTemporaryFile(suffix='.flac') as temp_file:
+#             chunk.export(temp_file.name, format='flac')
+
+#             start_time = time.time()
+#             try:
+#                 result = client.audio.transcriptions.create(
+#                     file=("chunk.flac", temp_file, "audio/flac"),
+#                     model="whisper-large-v3",
+#                     language="en", # We highly recommend specifying the language of your audio if you know it
+#                     response_format="verbose_json"
+#                 )
+#                 api_time = time.time() - start_time
+#                 total_api_time += api_time
+
+#                 print(f"Chunk {chunk_num}/{total_chunks} processed in {api_time:.2f}s")
+#                 return result, total_api_time
+
+#             except RateLimitError as e:
+#                 print(f"\nRate limit hit for chunk {chunk_num} - retrying in 60 seconds...")
+#                 time.sleep(60)
+#                 continue
+
+#             except Exception as e:
+#                 print(f"Error transcribing chunk {chunk_num}: {str(e)}")
+#                 raise
+
+# def worker_transcribe(api_key: str, chunk: AudioSegment, chunk_num: int, total_chunks: int) -> Tuple[dict, float]:
+#     try:
+#         client = Groq(api_key=api_key, max_retries=0)
+#         return transcribe_single_chunk(client, chunk, chunk_num, total_chunks)
+#     except Exception:
+#         print(f"Error transcribing chunk {chunk_num}: {Exception}")
+#         return None, 0.0  # Or optionally return error string for debugging
+
+async def transcribe_single_chunk(client: AsyncGroq, chunk: AudioSegment, chunk_num: int, total_chunks: int) -> Tuple[dict, float]:
     """
     Transcribe a single audio chunk with Groq API.
 
@@ -424,7 +482,7 @@ def transcribe_single_chunk(client: Groq, chunk: AudioSegment, chunk_num: int, t
 
             start_time = time.time()
             try:
-                result = client.audio.transcriptions.create(
+                result = await client.audio.transcriptions.create(
                     file=("chunk.flac", temp_file, "audio/flac"),
                     model="whisper-large-v3",
                     language="en", # We highly recommend specifying the language of your audio if you know it
@@ -445,15 +503,7 @@ def transcribe_single_chunk(client: Groq, chunk: AudioSegment, chunk_num: int, t
                 print(f"Error transcribing chunk {chunk_num}: {str(e)}")
                 raise
 
-def worker_transcribe(api_key: str, chunk: AudioSegment, chunk_num: int, total_chunks: int) -> Tuple[dict, float]:
-    try:
-        client = Groq(api_key=api_key, max_retries=0)
-        return transcribe_single_chunk(client, chunk, chunk_num, total_chunks)
-    except Exception:
-        print(f"Error transcribing chunk {chunk_num}: {Exception}")
-        return None, 0.0  # Or optionally return error string for debugging
-
-def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overlap: int = 10) -> dict:
+async def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overlap: int = 10) -> dict:
     """
     Transcribe audio in chunks with overlap with Whisper via Groq API.
 
@@ -475,7 +525,8 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
 
     print(f"\nStarting transcription of: {audio_path}")
     # Make sure your Groq API key is configured. If you don't have one, you can get one at https://console.groq.com/keys!
-    client = Groq(api_key=api_key, max_retries=0)
+    # client = Groq(api_key=api_key, max_retries=0)
+    client = AsyncGroq(api_key=api_key)
 
     processed_path = None
     try:
@@ -495,22 +546,47 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
         total_chunks = (duration // (chunk_ms - overlap_ms)) + 1
         print(f"Processing {total_chunks} chunks...")
 
-        results = []
-        total_transcription_time = 0
+        # results = []
+        # total_transcription_time = 0
+        # # Loop through each chunk, extract current chunk from audio, transcribe    
+        # for i in range(total_chunks):
+        #     start = i * (chunk_ms - overlap_ms)
+        #     end = min(start + chunk_ms, duration)
 
-        # Loop through each chunk, extract current chunk from audio, transcribe    
-        for i in range(total_chunks):
-            start = i * (chunk_ms - overlap_ms)
-            end = min(start + chunk_ms, duration)
+        #     print(f"\nProcessing chunk {i+1}/{total_chunks}")
+        #     print(f"Time range: {start/1000:.1f}s - {end/1000:.1f}s")
 
-            print(f"\nProcessing chunk {i+1}/{total_chunks}")
-            print(f"Time range: {start/1000:.1f}s - {end/1000:.1f}s")
+        #     chunk = audio[start:end]
+        #     result, chunk_time = transcribe_single_chunk(client, chunk, i+1, total_chunks)
+        #     total_transcription_time += chunk_time
+        #     results.append((result, start))
+        
+        transcription_results = [None] * total_chunks
+        chunks = [
+            (
+                audio[i * (chunk_ms - overlap_ms) : 
+                    min((i * (chunk_ms - overlap_ms)) + chunk_ms, duration)],
+                i * (chunk_ms - overlap_ms) # Start 
+            )
+            for i in range(total_chunks)
+        ]
 
-            chunk = audio[start:end]
-            result, chunk_time = transcribe_single_chunk(client, chunk, i+1, total_chunks)
-            total_transcription_time += chunk_time
-            results.append((result, start))
-        # results = [None] * total_chunks
+        async def limited_transcribe(client: AsyncGroq, chunk: AudioSegment, chunk_num: int, total_chunks: int) -> Tuple[int, dict, float]:
+            async with rate_limit:
+                transcription, chunk_time = await transcribe_single_chunk(client, chunk, chunk_num, total_chunks)
+                return chunk_num - 1, transcription, chunk_time
+
+        tasks = {
+            asyncio.create_task(limited_transcribe(client, chunk, chunk_index + 1, total_chunks)): chunk_index 
+            for chunk_index, (chunk, start) in enumerate(chunks)
+        }
+
+        for completion in asyncio.as_completed(tasks):
+            chunk_index,transcription, chunk_time = await completion
+            start = chunks[chunk_index][1]
+            transcription_results[chunk_index] = (transcription, start)
+        
+        # final_results = [None] * total_chunks
         # chunks = []
         # for i in range(total_chunks):
         #     start = i * (chunk_ms - overlap_ms)
@@ -518,6 +594,20 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
 
         #     chunk = audio[start:end]
         #     chunks.append((chunk, start))
+    
+        # tasks = [transcribe_single_chunk(client, chunk, chunk_index + 1, total_chunks) for chunk_index, (chunk, start) in enumerate(chunks)]
+        # results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # for i in range(total_chunks):
+        #     transciption = results[i]
+        #     start = chunks[i][1]
+        #     final_results[i] = ((transciption, start))
+
+        # final_results = [
+        #     (results[i], chunks[i][1])  #transciption = results[i], start = chunks[i][1]
+        #     for i in range(total_chunks)
+        # ]
+
           
         # with ProcessPoolExecutor(max_workers=4) as executor:
         #     futures = {
@@ -532,7 +622,7 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
         #         results[chunk_index] = (result, start)
         #         print("Finished a process")
 
-        final_result = merge_transcripts(results)
+        final_result = merge_transcripts(transcription_results)
         save_results(final_result, audio_path)
 
         # print(f"\nTotal Groq API transcription time: {total_transcription_time:.2f}s")
@@ -615,4 +705,5 @@ def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overla
 #             Path(processed_path).unlink(missing_ok=True)
 
 if __name__ == "__main__":
-    transcribe_audio_in_chunks(Path("Dynamic Verification.wav"))
+    asyncio.run(transcribe_audio_in_chunks(Path("Dynamic Verification.wav")))
+    # transcribe_audio_in_chunks(Path("Dynamic Verification.wav"))+
