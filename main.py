@@ -1,5 +1,4 @@
-from typing import Union
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from transcribe import transcribe
 
@@ -17,7 +16,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/transcription/youtube/{url}")
+@app.get("/transcription/youtube") # Fast api will get query parameer for you
 async def return_transcription(url: str):
+    if not url.startswith("https://www.youtube.com/watch?v="):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL provided")
+
     transcription = await transcribe(url)
     return transcription

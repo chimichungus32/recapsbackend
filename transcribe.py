@@ -641,12 +641,10 @@ def downloadAudioFromYoutube(url: str, directory: str) -> str:
 
 async def transcribe(url: str) -> str:
     start_time = time.time()
+    
     directory = "downloads"
     file_name = downloadAudioFromYoutube(url, directory)
-    
     results = await transcribe_audio_in_chunks(Path(file_name))
-
-    # results = asyncio.run(transcribe_audio_in_chunks(Path(file_name)))
 
     end_time = time.time()
     print(f"Total time to transcribe: {end_time - start_time}s")

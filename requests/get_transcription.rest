@@ -1,0 +1,1 @@
+GET http://localhost:8000/transcription/youtube/?url=https://www.youtube.com/watch?v=yYALsys-P_w

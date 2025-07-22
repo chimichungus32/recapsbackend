@@ -1,4 +1,5 @@
 Dynamic Verification.wav
 transcriptions/
 downloads/
+__pycache__/
 .env
