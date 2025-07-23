@@ -573,11 +573,13 @@ async def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, 
     print(f"Processing {total_chunks} chunks...")
     
     transcription_results = [None] * total_chunks
+
+    # i * (chunk_ms - overlap_ms) is calculating start timestamp
+    # min((i * (chunk_ms - overlap_ms)) + chunk_ms, duration) is calculating end timestamp 
     chunks = [
         (
-            audio[i * (chunk_ms - overlap_ms) :   
-                min((i * (chunk_ms - overlap_ms)) + chunk_ms, duration)],  
-            i * (chunk_ms - overlap_ms) # Start 
+            audio[i * (chunk_ms - overlap_ms) : min((i * (chunk_ms - overlap_ms)) + chunk_ms, duration)],
+            i * (chunk_ms - overlap_ms) #  Adding start time so we can retrieve later 
         )
         for i in range(total_chunks)
     ]
