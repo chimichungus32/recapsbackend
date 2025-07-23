@@ -433,7 +433,8 @@ async def transcribe_single_chunk(client: AsyncGroq, chunk: AudioSegment, chunk_
                     file=("chunk.flac", temp_file, "audio/flac"),
                     model="whisper-large-v3",
                     language="en", # We highly recommend specifying the language of your audio if you know it
-                    response_format="verbose_json"
+                    response_format="verbose_json",  
+                    timestamp_granularities=["word"]
                 )
                 api_time = time.time() - start_time
                 total_api_time += api_time
@@ -532,7 +533,8 @@ async def transcribe_single_chunk(client: AsyncGroq, chunk: AudioSegment, chunk_
 #         if processed_path:
 #             Path(processed_path).unlink(missing_ok=True)
 
-async def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 300, overlap: int = 10) -> dict:
+# async def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 300, overlap: int = 10) -> dict:
+async def transcribe_audio_in_chunks(audio_path: Path, chunk_length: int = 600, overlap: int = 10) -> dict:
     """
     Transcribe audio in chunks with overlap with Whisper via Groq API.
 
@@ -641,14 +643,14 @@ def downloadAudioFromYoutube(url: str, directory: str) -> str:
 
 async def transcribe(url: str) -> str:
     start_time = time.time()
-    
+
     directory = "downloads"
     file_name = downloadAudioFromYoutube(url, directory)
     results = await transcribe_audio_in_chunks(Path(file_name))
 
     end_time = time.time()
     print(f"Total time to transcribe: {end_time - start_time}s")
-    print("Transcription text: " + results["text"])
+    # print("Transcription text: " + results["text"])
 
     return results["text"]
 
@@ -657,12 +659,21 @@ if __name__ == "__main__":
         "https://www.youtube.com/watch?v=JeznW_7DlB0", # oop programming 1 hour video
         "https://www.youtube.com/watch?v=yYALsys-P_w"  # oop programming 1 minute video
     ]
-    asyncio.run(transcribe(urls[1]))
+    asyncio.run(transcribe(urls[0]))
 
 # TODO
-# Warm up model!?
+# use  Word-Level Timestamp to merge transcripts from the chunks
+    # This is the most robust and reliable method. 
+    # It completely ignores the "segment" structure and rebuilds the transcript from the most granular data available.
+    # Get Word-Level Timestamps: Ensure your API call requests timestamp_granularities=["word"].
+    # Create a Master Word List: In your merge_transcripts function, first iterate through all your chunks 
+    # and create one single list of all word objects, 
+    # converting their start and end times to absolute values (which your code already does perfectly).
+    # De-duplicate the Master List: This is the key step. Sort the master list by start time and then iterate through it, removing any word that is a "duplicate." A duplicate is a word that starts before the previous word in the list ended.
+
 # Cut out silence from audio after it was processed (MAY REMOVE CONTEXT)
-# Make chunks smaller to send out more requests concurrently
+
+# Make chunks smaller to send out more requests concurrently 
     # Per hour, my maximum audio time is 2 hours and I get 20 requests per minute: try creating 7 minute chunks- 
     # to account for overlap, since 6 minutes will result in 21 requests (default is 10 min)
 
